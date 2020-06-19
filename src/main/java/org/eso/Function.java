@@ -20,16 +20,9 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Optional;
+import java.util.logging.Logger;
 
-/**
- * Azure Functions with HTTP Trigger.
- */
 public class Function {
-  /**
-   * This function listens at endpoint "/api/HttpExample". Two ways to invoke it using "curl" command in bash:
-   * 1. curl -d "HTTP Body" {your host}/api/HttpExample
-   * 2. curl "{your host}/api/HttpExample?name=HTTP%20Query"
-   */
   @FunctionName("copyBlobHttp")
   @StorageAccount("Storage_Account_Connection_String")
   public HttpResponseMessage copyBlobHttp(
@@ -40,23 +33,23 @@ public class Function {
       @BlobInput(
           name = "file",
           dataType = "binary",
-          path = "ikeaimages/{Query.file}")
+          path = "{Query.container}/{Query.file}")
           byte[] content,
       @BlobOutput(
           name = "target",
-          path = "ikeaimages/thumb-{Query.file}")
+          path = "{Query.container}/thumb-{Query.file}")
           OutputBinding<byte[]> outputItem,
       final ExecutionContext context) {
 
-    context.getLogger().info("GET parameters are: " + request.getQueryParameters());
-    context.getLogger().info("GET parameters File: " + request.getQueryParameters().get("file"));
+    Logger logger = context.getLogger();
     BufferedImage scaledImg = null;
-    try {
-      BufferedImage img = ImageIO.read(new ByteArrayInputStream(content)); // load image
-      scaledImg = Scalr.resize(img, Scalr.Method.AUTOMATIC.QUALITY, 150, 100, Scalr.OP_ANTIALIAS);
+    String fileName = request.getQueryParameters().get("file");
+    String containerName = request.getQueryParameters().get("container");
 
-      // Save blob to outputItem
-      //outputItem.setValue(new String(content, StandardCharsets.UTF_8));
+    try {
+      logger.info(" Creating Thumbnail for Container/Image: " + containerName + " / " + fileName);
+      BufferedImage img = ImageIO.read(new ByteArrayInputStream(content));
+      scaledImg = Scalr.resize(img, Scalr.Method.AUTOMATIC.QUALITY, 150, 100, Scalr.OP_ANTIALIAS);
       ByteArrayOutputStream baos = new ByteArrayOutputStream();
       ImageIO.write(scaledImg, "jpg", baos);
       baos.flush();
@@ -64,12 +57,10 @@ public class Function {
       baos.close();
       outputItem.setValue(imageInByte);
     } catch (IOException e) {
-      context.getLogger().info("Failed to read the Image" + e);
+      logger.severe("Failed to generate Thumbnail for the Container/Image: " + containerName + " / " + fileName + e);
     }
-    // build HTTP response with size of requested blob
-    return request.createResponseBuilder(HttpStatus.OK)
-        .body("The size of \"" + request.getQueryParameters().get("file") + "\" is: " + content.length + " bytes")
-        .build();
+    logger.info(" Completed Thumbnail Generation for Container/Image: " + containerName + " / " + fileName);
+    return request.createResponseBuilder(HttpStatus.OK).build();
   }
 
 }
